@@ -45,6 +45,15 @@
     <div class="scroll"><table id="equipos"></table></div>
   </section>
   <div id="grupos"></div>
+  <section>
+    <h2>Comparar con la app</h2>
+    <p class="dato" style="margin:0 0 8px">Archivos del backend contra los de la app, el mismo día, por minuto y desde
+      que el backend empezó a guardar. La diferencia es la mayor entre las dos lecturas de un mismo minuto.</p>
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px">
+      <input type="date" id="dia"> <button id="comparar">Comparar</button> <span id="compararEstado" class="dato"></span>
+    </div>
+    <div id="comparacion"></div>
+  </section>
 </main>
 <script>
   let segundoCiclo = 30;
@@ -114,6 +123,46 @@
     if ((segundoCiclo + 5) % 60 === s) cargar();
   }, 1000);
 
+  async function comparar() {
+    const boton = document.getElementById('comparar');
+    const estado = document.getElementById('compararEstado');
+    const dia = document.getElementById('dia').value;
+    boton.disabled = true;
+    estado.textContent = 'comparando…';
+    try {
+      const r = await fetch('api/comparar' + (dia ? '?dia=' + dia : ''), {cache: 'no-store'});
+      const d = await r.json();
+      estado.textContent = '';
+      const destino = document.getElementById('comparacion');
+      if (d.error) { destino.innerHTML = `<span class="chip mal">${fmt(d.error)}</span>`; return; }
+      destino.innerHTML = d.archivos.map(a => {
+        const cab = `<h2 style="margin-top:12px">${fmt(a.titulo)} <span class="dato">· ${fmt(a.archivo)}</span></h2>`;
+        if (!a.existeBackend) return cab + '<p class="vacio">El backend todavía no tiene este archivo.</p>';
+        if (!a.existeApp) return cab + '<p class="vacio">La app no tiene este archivo.</p>';
+        if (!a.tablas.length) return cab + '<p class="vacio">Sin filas ese día.</p>';
+        return cab + '<div class="scroll"><table><tr><th>Tabla</th><th>Filas app</th><th>Filas backend</th>'
+          + '<th>Minutos en común</th><th>Diferencia máxima</th><th class="izq">Estado</th></tr>'
+          + a.tablas.map(t => {
+              const falta = t.filasApp === 0 || t.filasBackend === 0;
+              const parcial = t.minutosEnComun < Math.min(t.filasApp, t.filasBackend) - 1;
+              const clase = falta ? 'mal' : parcial ? 'aviso' : 'ok';
+              const texto = t.filasBackend === 0 ? 'solo en la app' : t.filasApp === 0 ? 'solo en el backend'
+                : parcial ? 'minutos distintos' : 'coincide';
+              const dif = t.diferenciaMaxima === null ? '<span class="nulo">—</span>'
+                : `${fmt(t.diferenciaMaxima)} <span class="dato">${fmt(t.columna)}</span>`;
+              return `<tr><td>${fmt(t.tabla)}</td><td>${fmt(t.filasApp)}</td><td>${fmt(t.filasBackend)}</td>`
+                + `<td>${fmt(t.minutosEnComun)}</td><td>${dif}</td><td class="izq"><span class="chip ${clase}">${texto}</span></td></tr>`;
+            }).join('') + '</table></div>';
+      }).join('');
+    } catch (e) {
+      estado.innerHTML = '<span class="chip mal">no se pudo comparar</span>';
+    } finally {
+      boton.disabled = false;
+    }
+  }
+
+  document.getElementById('dia').value = new Date().toLocaleDateString('sv');
+  document.getElementById('comparar').addEventListener('click', comparar);
   document.getElementById('refrescar').addEventListener('click', cargar);
   cargar();
 </script>

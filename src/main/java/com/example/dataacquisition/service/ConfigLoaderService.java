@@ -91,4 +91,24 @@ public class ConfigLoaderService {
     public static String nombreTablaCanalMezclador(String nombreMezclador, String canal) {
         return nombreMezclador + "_" + canal;
     }
+
+    /** Tablas de los mezcladores (dos canales por mezclador), como listarNombresTablasMezcladores de la app. */
+    public List<String> listarNombresTablasMezcladores() {
+        return loadMezcladoresConfig().stream()
+                .flatMap(m -> {
+                    String nombre = String.valueOf(m.get("nombre"));
+                    return java.util.stream.Stream.of(
+                            nombreTablaCanalMezclador(nombre, "Calentamiento"),
+                            nombreTablaCanalMezclador(nombre, "Enfriamiento"));
+                })
+                .toList();
+    }
+
+    /** Nombres de tabla de todas las líneas/máquinas de linea-id-config.json (campo lineaMaquina). */
+    public List<String> listarLineas() {
+        return loadLineaIDConfig().stream()
+                .map(l -> (String) l.get("lineaMaquina"))
+                .filter(n -> n != null && !n.isBlank())
+                .toList();
+    }
 }

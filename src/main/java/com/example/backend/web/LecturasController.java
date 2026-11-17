@@ -2,6 +2,10 @@ package com.example.backend.web;
 
 import com.example.backend.almacen.AlmacenLecturas;
 import com.example.backend.ciclo.UltimoCiclo;
+import com.example.backend.comparar.ComparadorArchivos;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import java.time.LocalDate;
 import com.example.backend.modelo.Fila;
 import com.example.backend.modelo.TipoTabla;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,9 +28,12 @@ public class LecturasController {
     private final boolean lecturaHabilitada;
     private final int segundoCiclo;
 
-    public LecturasController(UltimoCiclo ultimo, AlmacenLecturas almacen,
+    private final ComparadorArchivos comparador;
+
+    public LecturasController(UltimoCiclo ultimo, AlmacenLecturas almacen, ComparadorArchivos comparador,
                               @Value("${colector.lectura.habilitada:true}") boolean lecturaHabilitada,
                               @Value("${colector.ciclo.segundo:30}") int segundoCiclo) {
+        this.comparador = comparador;
         this.ultimo = ultimo;
         this.almacen = almacen;
         this.lecturaHabilitada = lecturaHabilitada;
@@ -67,5 +74,13 @@ public class LecturasController {
         }
         salida.put("grupos", grupos);
         return salida;
+    }
+
+    /** Compara los archivos SQLite del backend con los de la app para un día (por defecto hoy). Solo lee. */
+    @GetMapping("/api/comparar")
+    public Map<String, Object> comparar(@RequestParam(required = false)
+                                        @org.springframework.format.annotation.DateTimeFormat(
+                                                iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) LocalDate dia) {
+        return comparador.comparar(dia == null ? LocalDate.now() : dia);
     }
 }

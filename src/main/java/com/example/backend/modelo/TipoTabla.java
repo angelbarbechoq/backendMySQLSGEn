@@ -3,6 +3,7 @@ package com.example.backend.modelo;
 import com.example.dataacquisition.RutaArchivosEnergia;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Los tipos de tabla que hoy graba la app principal en SQLite. Cada {@link Fila} lleva uno: es lo que va a decidir la
@@ -32,13 +33,22 @@ public enum TipoTabla {
 
     /** Archivo SQLite mensual donde la app principal guarda esta fila (sin la carpeta base). */
     public String archivoSqlite(LocalDateTime fecha) {
+        return archivosSqlite(fecha).getFirst();
+    }
+
+    /**
+     * Todos los archivos donde la app guarda esta fila, sin la carpeta base: el mensual primero y, para energía, VIP y
+     * mezcladores, también el diario ({dd}{mes}, {dd}{mes}VIP). Calidad y generador solo tienen mensual.
+     */
+    public List<String> archivosSqlite(LocalDateTime fecha) {
         String mes = RutaArchivosEnergia.getNombreMes(fecha.getMonthValue());
         String carpeta = fecha.getYear() + "\\" + mes + "\\";
+        String dia = String.format("%02d", fecha.getDayOfMonth());
         return switch (this) {
-            case ENERGIA, MEZCLADOR -> carpeta + mes;
-            case VIP -> carpeta + mes + "VIP";
-            case CALIDAD -> carpeta + mes + "Calidad";
-            case GENERADOR -> carpeta + mes + "Generador";
+            case ENERGIA, MEZCLADOR -> List.of(carpeta + mes, carpeta + dia + mes);
+            case VIP -> List.of(carpeta + mes + "VIP", carpeta + dia + mes + "VIP");
+            case CALIDAD -> List.of(carpeta + mes + "Calidad");
+            case GENERADOR -> List.of(carpeta + mes + "Generador");
         };
     }
 }
