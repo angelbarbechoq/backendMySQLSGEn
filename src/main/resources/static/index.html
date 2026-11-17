@@ -76,7 +76,8 @@
       document.getElementById('almacen').textContent = d.almacen;
       const c = d.ciclo;
       document.getElementById('ciclo').innerHTML = c
-        ? `${c.inicio.replace('T', ' ')} · ${(c.ms / 1000).toFixed(1)} s · ${c.filas} filas · ${c.guardadas} guardadas`
+        ? `${c.inicio.replace('T', ' ')} · ${(c.ms / 1000).toFixed(1)} s · ${c.filas} filas · `
+          + (c.prueba ? 'lectura de prueba al arrancar, sin guardar' : `${c.guardadas} guardadas`)
           + (c.errorGuardado ? ` <span class="chip mal">${fmt(c.errorGuardado)}</span>` : '')
         : 'todavía no hubo ciclo';
       equipos(c ? c.estados : []);

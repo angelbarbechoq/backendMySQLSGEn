@@ -23,9 +23,10 @@ public class UltimoCiclo {
      * @param filas     filas armadas en el ciclo
      * @param guardadas filas que aceptó el almacén
      * @param errorGuardado null si se guardó bien
+     * @param prueba    lectura de prueba al arrancar: se leyó pero no se guardó nada
      */
     public record Resumen(LocalDateTime inicio, long ms, int filas, int guardadas, String errorGuardado,
-                          List<EstadoDispositivo> estados) {
+                          List<EstadoDispositivo> estados, boolean prueba) {
     }
 
     private volatile Resumen resumen;

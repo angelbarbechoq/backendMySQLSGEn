@@ -12,7 +12,10 @@ import com.example.backend.modelo.Fila;
 import com.example.backend.modelo.ResultadoLectura;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -43,10 +46,13 @@ public class CicloLectura {
     private final UltimoCiclo ultimo;
     private final EstadoEquiposArchivo estadoEquipos;
     private final AtomicBoolean enCurso = new AtomicBoolean(false);
+    private final int segundoCiclo;
 
     public CicloLectura(LectorPLC plc, LectorPasarelas pasarelas, LectorMezcladores mezcladores,
                         LectorGeneradores generadores, AlmacenLecturas almacen, UltimoCiclo ultimo,
-                        EstadoEquiposArchivo estadoEquipos) {
+                        EstadoEquiposArchivo estadoEquipos,
+                        @Value("${colector.ciclo.segundo:30}") int segundoCiclo) {
+        this.segundoCiclo = segundoCiclo;
         this.estadoEquipos = estadoEquipos;
         this.plc = plc;
         this.pasarelas = pasarelas;
@@ -59,6 +65,28 @@ public class CicloLectura {
 
     @Scheduled(cron = "${colector.ciclo.segundo:30} * * * * *")
     public void ciclo() {
+        ejecutar(true);
+    }
+
+    /**
+     * Al arrancar, para ver enseguida que los equipos contestan: si para la lectura del reloj (segundo
+     * {@code colector.ciclo.segundo}) faltan 30 s o más, una lectura de PRUEBA que no guarda nada (ni datos ni el
+     * estado de los equipos para la app), solo se ve en la página y en /api/estado. Si faltan menos de 30 s, se espera
+     * la del reloj: así no quedan dos filas guardadas a pocos segundos una de otra.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void lecturaAlArrancar() {
+        int falta = Math.floorMod(segundoCiclo - LocalDateTime.now().getSecond(), 60);
+        if (falta < 30) {
+            logger.info("Faltan {} s para la lectura del reloj: sin lectura de prueba al arrancar", falta);
+            return;
+        }
+        logger.info("Faltan {} s para la lectura del reloj: lectura de prueba al arrancar (no se guarda)", falta);
+        Thread.ofVirtual().name("lectura-prueba").start(() -> ejecutar(false));
+    }
+
+    /** @param guardar false = lectura de prueba: se lee y se muestra, no se guarda nada */
+    private void ejecutar(boolean guardar) {
         if (!enCurso.compareAndSet(false, true)) {
             logger.warn("El ciclo anterior todavia no termino; se saltea este");
             return;
@@ -74,18 +102,24 @@ public class CicloLectura {
             leer("Mezcladores", mezcladores::leer, filas, estados, conectividad);
             leer("Generadores", generadores::leer, filas, estados, conectividad);
 
-            AlmacenLecturas.ResultadoGuardado g;
-            try {
-                g = almacen.guardar(filas);
-            } catch (Exception e) {
-                logger.error("Error guardando el ciclo: {}", e.getMessage(), e);
-                g = new AlmacenLecturas.ResultadoGuardado(0, e.getMessage());
+            AlmacenLecturas.ResultadoGuardado g = new AlmacenLecturas.ResultadoGuardado(0, null);
+            if (guardar) {
+                try {
+                    g = almacen.guardar(filas);
+                } catch (Exception e) {
+                    logger.error("Error guardando el ciclo: {}", e.getMessage(), e);
+                    g = new AlmacenLecturas.ResultadoGuardado(0, e.getMessage());
+                }
+                // Después de los datos: cuando la app ve el estado nuevo, las filas del ciclo ya están guardadas.
+                estadoEquipos.guardar(inicio, conectividad);
             }
-            // Después de los datos: cuando la app ve el estado nuevo, las filas del ciclo ya están guardadas.
-            estadoEquipos.guardar(inicio, conectividad);
             long ms = System.currentTimeMillis() - t0;
-            ultimo.registrar(new UltimoCiclo.Resumen(inicio, ms, filas.size(), g.guardadas(), g.error(), estados), filas);
-            logger.info("Ciclo {}: {} filas, {} guardadas en {} ms", inicio, filas.size(), g.guardadas(), ms);
+            ultimo.registrar(new UltimoCiclo.Resumen(inicio, ms, filas.size(), g.guardadas(), g.error(), estados, !guardar), filas);
+            if (guardar) {
+                logger.info("Ciclo {}: {} filas, {} guardadas en {} ms", inicio, filas.size(), g.guardadas(), ms);
+            } else {
+                logger.info("Lectura de prueba {}: {} filas leidas en {} ms, sin guardar", inicio, filas.size(), ms);
+            }
         } finally {
             enCurso.set(false);
         }
