@@ -1,5 +1,6 @@
 package com.example.backend.lectura;
 
+import com.example.backend.modelo.Conectividad;
 import com.example.backend.modelo.EstadoDispositivo;
 import com.example.backend.modelo.Fila;
 import com.example.backend.modelo.ResultadoLectura;
@@ -75,6 +76,7 @@ public class LectorPLC {
         if (!ModbusUtil.isIPAvailable(ip)) {
             r.estados().add(new EstadoDispositivo("PLC", nombre, ip, 0, total, "sin respuesta a ping",
                     System.currentTimeMillis() - inicio));
+            conectividad(r, lineasDelPLC, false, "sin respuesta a ping");
             return;
         }
 
@@ -94,8 +96,11 @@ public class LectorPLC {
             logger.error("Fallo la lectura del PLC {} en {}: {}", nombre, ip, e.getMessage());
             r.estados().add(new EstadoDispositivo("PLC", nombre, ip, 0, total, "error de conexión Modbus: " + e.getMessage(),
                     System.currentTimeMillis() - inicio));
+            conectividad(r, lineasDelPLC, false, "error de conexión Modbus");
             return;
         }
+        // Como la app: leído el PLC, todas sus líneas cuentan como comunicadas.
+        conectividad(r, lineasDelPLC, true, null);
 
         LocalDateTime ahora = LocalDateTime.now().withNano(0);
         if (parametros != null) {
@@ -145,6 +150,12 @@ public class LectorPLC {
             if (algo) leidos++;
         }
         r.estados().add(new EstadoDispositivo("PLC", nombre, ip, leidos, total, null, System.currentTimeMillis() - inicio));
+    }
+
+    private static void conectividad(ResultadoLectura r, List<Map<String, Object>> lineas, boolean conectado, String motivo) {
+        for (Map<String, Object> l : lineas) {
+            r.conectividad().add(new Conectividad(String.valueOf(l.get("lineaMaquina")), conectado, motivo));
+        }
     }
 
     /** Dos registros como float de 32 bits (palabra alta primero), como en la app. */

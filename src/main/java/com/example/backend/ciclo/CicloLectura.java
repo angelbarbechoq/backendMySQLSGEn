@@ -1,6 +1,8 @@
 package com.example.backend.ciclo;
 
 import com.example.backend.almacen.AlmacenLecturas;
+import com.example.backend.almacen.EstadoEquiposArchivo;
+import com.example.backend.modelo.Conectividad;
 import com.example.backend.lectura.LectorGeneradores;
 import com.example.backend.lectura.LectorMezcladores;
 import com.example.backend.lectura.LectorPLC;
@@ -39,10 +41,13 @@ public class CicloLectura {
     private final LectorGeneradores generadores;
     private final AlmacenLecturas almacen;
     private final UltimoCiclo ultimo;
+    private final EstadoEquiposArchivo estadoEquipos;
     private final AtomicBoolean enCurso = new AtomicBoolean(false);
 
     public CicloLectura(LectorPLC plc, LectorPasarelas pasarelas, LectorMezcladores mezcladores,
-                        LectorGeneradores generadores, AlmacenLecturas almacen, UltimoCiclo ultimo) {
+                        LectorGeneradores generadores, AlmacenLecturas almacen, UltimoCiclo ultimo,
+                        EstadoEquiposArchivo estadoEquipos) {
+        this.estadoEquipos = estadoEquipos;
         this.plc = plc;
         this.pasarelas = pasarelas;
         this.mezcladores = mezcladores;
@@ -63,10 +68,11 @@ public class CicloLectura {
             long t0 = System.currentTimeMillis();
             List<Fila> filas = new ArrayList<>();
             List<EstadoDispositivo> estados = new ArrayList<>();
-            leer("PLC", plc::leer, filas, estados);
-            leer("Pasarelas", pasarelas::leer, filas, estados);
-            leer("Mezcladores", mezcladores::leer, filas, estados);
-            leer("Generadores", generadores::leer, filas, estados);
+            List<Conectividad> conectividad = new ArrayList<>();
+            leer("PLC", plc::leer, filas, estados, conectividad);
+            leer("Pasarelas", pasarelas::leer, filas, estados, conectividad);
+            leer("Mezcladores", mezcladores::leer, filas, estados, conectividad);
+            leer("Generadores", generadores::leer, filas, estados, conectividad);
 
             AlmacenLecturas.ResultadoGuardado g;
             try {
@@ -75,6 +81,8 @@ public class CicloLectura {
                 logger.error("Error guardando el ciclo: {}", e.getMessage(), e);
                 g = new AlmacenLecturas.ResultadoGuardado(0, e.getMessage());
             }
+            // Después de los datos: cuando la app ve el estado nuevo, las filas del ciclo ya están guardadas.
+            estadoEquipos.guardar(inicio, conectividad);
             long ms = System.currentTimeMillis() - t0;
             ultimo.registrar(new UltimoCiclo.Resumen(inicio, ms, filas.size(), g.guardadas(), g.error(), estados), filas);
             logger.info("Ciclo {}: {} filas, {} guardadas en {} ms", inicio, filas.size(), g.guardadas(), ms);
@@ -84,11 +92,13 @@ public class CicloLectura {
     }
 
     /** Un error en un grupo no corta el ciclo: queda como estado del grupo. */
-    private static void leer(String grupo, Supplier<ResultadoLectura> lector, List<Fila> filas, List<EstadoDispositivo> estados) {
+    private static void leer(String grupo, Supplier<ResultadoLectura> lector, List<Fila> filas, List<EstadoDispositivo> estados,
+                             List<Conectividad> conectividad) {
         try {
             ResultadoLectura r = lector.get();
             filas.addAll(r.filas());
             estados.addAll(r.estados());
+            conectividad.addAll(r.conectividad());
         } catch (Exception e) {
             logger.error("Error leyendo {}: {}", grupo, e.getMessage(), e);
             estados.add(new EstadoDispositivo(grupo, "(todos)", "", 0, 0, "error: " + e.getMessage(), 0));

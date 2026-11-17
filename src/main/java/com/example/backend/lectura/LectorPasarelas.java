@@ -1,5 +1,6 @@
 package com.example.backend.lectura;
 
+import com.example.backend.modelo.Conectividad;
 import com.example.backend.modelo.EstadoDispositivo;
 import com.example.backend.modelo.Fila;
 import com.example.backend.modelo.ResultadoLectura;
@@ -74,7 +75,9 @@ public class LectorPasarelas {
     private record Medidor(String tabla, BigDecimal kwh, BigDecimal[] vip, LecturaCalidad calidad) {
     }
 
-    private record Pasarela(String nombre, String ip, int total, List<Medidor> leidos, String motivo, long ms) {
+    /** conectividad: cada línea de la pasarela, leída o con su motivo (como DispositivoConectividadEvent de la app). */
+    private record Pasarela(String nombre, String ip, int total, List<Medidor> leidos, String motivo, long ms,
+                            List<Conectividad> conectividad) {
     }
 
     public ResultadoLectura leer() {
@@ -115,6 +118,7 @@ public class LectorPasarelas {
                     r.estados().add(new EstadoDispositivo("Pasarela", p.nombre(), p.ip(), p.leidos().size(), p.total(),
                             p.motivo(), p.ms()));
                     for (Medidor m : p.leidos()) agregarFilas(r, m, momento);
+                    r.conectividad().addAll(p.conectividad());
                 } catch (CancellationException e) {
                     r.estados().add(new EstadoDispositivo("Pasarela", "(una pasarela)", "", 0, 0,
                             "no terminó en " + LIMITE_CICLO_MS / 1000 + " s", LIMITE_CICLO_MS));
@@ -155,9 +159,14 @@ public class LectorPasarelas {
     private Pasarela leerPasarela(String nombre, String ip, List<Map<String, Object>> lineas, Map<String, DefinicionModelo> modelos) {
         long inicio = System.currentTimeMillis();
         List<Medidor> leidos = new ArrayList<>();
+        List<Conectividad> conectividad = new ArrayList<>();
         String primerMotivo = null;
         if (!ModbusUtil.isIPAvailable(ip)) {
-            return new Pasarela(nombre, ip, lineas.size(), leidos, "pasarela sin respuesta a ping", System.currentTimeMillis() - inicio);
+            for (Map<String, Object> linea : lineas) {
+                conectividad.add(new Conectividad(String.valueOf(linea.get("lineaMaquina")), false, "pasarela sin respuesta a ping"));
+            }
+            return new Pasarela(nombre, ip, lineas.size(), leidos, "pasarela sin respuesta a ping",
+                    System.currentTimeMillis() - inicio, conectividad);
         }
         int fallasRedSeguidas = 0;
         try (ModbusTcpConexion conexion = new ModbusTcpConexion(ip, TIMEOUT_MS)) {
@@ -188,9 +197,10 @@ public class LectorPasarelas {
                     logger.warn("Medidor {} (Unit ID {}) en {} sin lectura: {}", tabla, linea.get("id"), nombre, motivo);
                     if (primerMotivo == null) primerMotivo = tabla + ": " + motivo;
                 }
+                conectividad.add(new Conectividad(tabla, motivo == null, motivo));
             }
         }
-        return new Pasarela(nombre, ip, lineas.size(), leidos, primerMotivo, System.currentTimeMillis() - inicio);
+        return new Pasarela(nombre, ip, lineas.size(), leidos, primerMotivo, System.currentTimeMillis() - inicio, conectividad);
     }
 
     /** @return el {@link Medidor} leído, o el motivo (String) por el que no se pudo. */
