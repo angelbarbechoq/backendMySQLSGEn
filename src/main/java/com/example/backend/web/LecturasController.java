@@ -1,7 +1,9 @@
 package com.example.backend.web;
 
 import com.example.backend.almacen.AlmacenLecturas;
+import com.example.backend.ciclo.CicloLectura;
 import com.example.backend.ciclo.UltimoCiclo;
+import org.springframework.beans.factory.ObjectProvider;
 import com.example.backend.comparar.ComparadorArchivos;
 import org.springframework.web.bind.annotation.RequestParam;
 
@@ -44,12 +46,15 @@ public class LecturasController {
 
     private static final Logger logger = LoggerFactory.getLogger(LecturasController.class);
     private final ApplicationContext contexto;
+    /** No existe con colector.lectura.habilitada=false. */
+    private final ObjectProvider<CicloLectura> cicloLectura;
 
     public LecturasController(UltimoCiclo ultimo, AlmacenLecturas almacen, ComparadorArchivos comparador,
-                              ApplicationContext contexto,
+                              ApplicationContext contexto, ObjectProvider<CicloLectura> cicloLectura,
                               @Value("${colector.lectura.habilitada:true}") boolean lecturaHabilitada,
                               @Value("${colector.ciclo.segundo:30}") int segundoCiclo) {
         this.contexto = contexto;
+        this.cicloLectura = cicloLectura;
         this.comparador = comparador;
         this.ultimo = ultimo;
         this.almacen = almacen;
@@ -105,6 +110,12 @@ public class LecturasController {
         salida.put("iniciado", INICIADO.toString());
         salida.put("lecturaHabilitada", lecturaHabilitada);
         salida.put("almacen", almacen.nombre());
+        // Para la cuenta regresiva de la app: cuánto falta para la próxima lectura y si está leyendo ahora.
+        CicloLectura ciclo = cicloLectura.getIfAvailable();
+        if (ciclo != null) {
+            salida.put("segundosParaProximaLectura", ciclo.segundosParaProximaLectura());
+            salida.put("leyendo", ciclo.leyendo());
+        }
         UltimoCiclo.Resumen r = ultimo.resumen();
         if (r != null) {
             salida.put("ultimoCiclo", r.inicio().toString());

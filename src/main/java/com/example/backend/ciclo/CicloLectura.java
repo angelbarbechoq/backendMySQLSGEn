@@ -63,6 +63,17 @@ public class CicloLectura {
         logger.info("Ciclo de lectura habilitado; almacen: {}", almacen.nombre());
     }
 
+    /** true mientras corre una lectura (la del reloj o la de prueba al arrancar). */
+    public boolean leyendo() {
+        return enCurso.get();
+    }
+
+    /** Segundos que faltan para la próxima lectura del reloj (1 a 60). */
+    public int segundosParaProximaLectura() {
+        int falta = Math.floorMod(segundoCiclo - LocalDateTime.now().getSecond(), 60);
+        return falta == 0 ? 60 : falta;
+    }
+
     @Scheduled(cron = "${colector.ciclo.segundo:30} * * * * *")
     public void ciclo() {
         ejecutar(true);
@@ -100,7 +111,7 @@ public class CicloLectura {
             leer("PLC", plc::leer, filas, estados, conectividad);
             leer("Pasarelas", pasarelas::leer, filas, estados, conectividad);
             leer("Mezcladores", mezcladores::leer, filas, estados, conectividad);
-            leer("Generadores", generadores::leer, filas, estados, conectividad);
+            leer("Generadores", () -> generadores.leer(guardar), filas, estados, conectividad);
 
             AlmacenLecturas.ResultadoGuardado g = new AlmacenLecturas.ResultadoGuardado(0, null);
             if (guardar) {
